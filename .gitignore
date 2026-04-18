@@ -1,0 +1,16 @@
+.env
+node_modules
+.DS_Store
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+*.log
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
