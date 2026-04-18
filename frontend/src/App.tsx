@@ -105,7 +105,12 @@ function App() {
       {/* Center Column: Illustration + Scene Description + Mic */}
       <main className="center-column">
         <section className="illustration-area">
-          <div className="illustration-placeholder">Tavern Interior</div>
+          <img
+            src="/tavern_interior.png"
+            alt="Tavern Interior"
+            className="illustration-img"
+            onError={(e) => (e.currentTarget.style.display = 'none')}
+          />
         </section>
 
         <section className="chat-area">

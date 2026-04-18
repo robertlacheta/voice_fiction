@@ -1,0 +1,9 @@
+[build]
+  # Katalog, w którym Netlify ma zacząć budowanie
+  base = "frontend"
+  
+  # Komenda budująca (standardowa dla Vite)
+  command = "npm run build"
+  
+  # Folder z gotowymi plikami do wysłania na serwer
+  publish = "dist"
