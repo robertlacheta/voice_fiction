@@ -14,3 +14,6 @@ ENV/
 .mypy_cache/
 .coverage
 htmlcov/
+# GCP credentials
+backend/gcp-credentials.json
+*.json.key
