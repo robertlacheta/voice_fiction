@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
+import { useVoiceRecorder } from './useVoiceRecorder';
 
 interface LogEntry {
   id: number;
@@ -8,20 +9,33 @@ interface LogEntry {
 }
 
 function App() {
-  const [hp, setHp] = useState(100);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
+  const PLAYER_ID = 'player_001';
 
-  const [sceneDescription, setSceneDescription] = useState(
-    "You're in a dimly lit tavern. A burly bartender looks up at you. The air is thick with the smell of roasted meat and old ale."
-  );
+  const [hp] = useState(100);
+  const [avatarError, setAvatarError] = useState(false);
 
   const [logs, setLogs] = useState<LogEntry[]>([
     { id: 1, text: "Thalia enters the tavern.", type: 'system' },
     { id: 2, text: "Thalia: Heard any good rumors lately, barkeep?", type: 'action' },
     { id: 3, text: "Bartender: Aye, heard there's trouble in the woods to the east. Bandits, maybe worse...", type: 'dialogue' },
   ]);
+
+  const [sceneDescription] = useState(
+    "You're in a dimly lit tavern. A burly bartender looks up at you. The air is thick with the smell of roasted meat and old ale."
+  );
+
+  const onTranscript = useCallback((transcript: string) => {
+    setLogs((prev) => [
+      ...prev,
+      { id: Date.now(), text: `Thalia: ${transcript}`, type: 'action' },
+    ]);
+  }, []);
+
+  const { status, errorMessage, startRecording, stopRecording } =
+    useVoiceRecorder(PLAYER_ID, onTranscript);
+
+  const isRecording = status === 'recording';
+  const isProcessing = status === 'processing';
 
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -31,36 +45,14 @@ function App() {
     }
   }, [logs]);
 
-  const handleMicClick = () => {
-    if (isProcessing) return;
-
-    if (!isRecording) {
-      setIsRecording(true);
-    } else {
-      setIsRecording(false);
-      setIsProcessing(true);
-
-      setTimeout(() => {
-        const newAction: LogEntry = {
-          id: Date.now(),
-          text: "Thalia: Tell me more about these bandits.",
-          type: 'action'
-        };
-        setLogs(prev => [...prev, newAction]);
-        setIsProcessing(false);
-
-        setTimeout(() => {
-          setLogs(prev => [...prev, {
-            id: Date.now() + 1,
-            text: "Bartender: They've been raiding caravans near the old bridge. The local guard is spread thin.",
-            type: 'dialogue'
-          }]);
-          setSceneDescription("The bartender leans in closer, his voice dropping to a whisper. He points a calloused finger toward a map tacked to the wall.");
-          setHp(prev => Math.max(0, prev - 5));
-        }, 1200);
-      }, 1500);
-    }
+  // Naciśnij i przytrzymaj = nagrywanie; puść = wyślij
+  const handlePointerDown = () => {
+    if (!isProcessing) void startRecording();
   };
+  const handlePointerUp = () => {
+    if (isRecording) stopRecording();
+  };
+
 
   return (
     <div className="game-window">
@@ -119,12 +111,22 @@ function App() {
 
         <section className="mic-area">
           <button
-            className={`mic-button ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''}`}
-            onClick={handleMicClick}
+            id="mic-button"
+            className={`mic-button ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''} ${status === 'error' ? 'error' : ''}`}
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
             disabled={isProcessing}
+            aria-label={isRecording ? 'Nagrywanie – puść aby wysłać' : isProcessing ? 'Przetwarzanie…' : 'Przytrzymaj aby nagrać'}
           >
-            <div className="mic-icon"></div>
+            <div className="mic-icon" />
           </button>
+          {isProcessing && <p className="mic-hint">Przetwarzanie…</p>}
+          {!isProcessing && !isRecording && !errorMessage && (
+            <p className="mic-hint">Przytrzymaj i mów</p>
+          )}
+          {isRecording && <p className="mic-hint recording-hint">Nagrywanie… (maks. 5 s)</p>}
+          {errorMessage && <p className="mic-error">{errorMessage}</p>}
         </section>
       </main>
 
@@ -137,7 +139,7 @@ function App() {
               {log.text}
             </div>
           ))}
-          {isProcessing && <div className="log-entry system">...listening...</div>}
+          {isProcessing && <div className="log-entry system">⏳ Przetwarzanie…</div>}
         </div>
       </aside>
     </div>
