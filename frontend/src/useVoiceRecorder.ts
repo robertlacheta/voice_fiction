@@ -81,7 +81,13 @@ export function useVoiceRecorder(
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,   // mono – Firefox domyślnie stereo, co powoduje błąd Google STT
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
       streamRef.current = stream;
     } catch {
       setErrorMessage('Brak dostępu do mikrofonu. Sprawdź uprawnienia w przeglądarce.');
