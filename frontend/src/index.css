@@ -220,6 +220,33 @@ body {
   height: 120px;
 }
 
+.mic-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.mic-hint {
+  font-size: 0.85rem;
+  color: var(--text-main);
+  opacity: 0.6;
+  text-align: center;
+}
+
+.mic-hint.recording-hint {
+  color: #ff4444;
+  opacity: 1;
+}
+
+.mic-error {
+  font-size: 0.8rem;
+  color: #ff4444;
+  text-align: center;
+  max-width: 200px;
+}
+
 .mic-button {
   width: 70px;
   height: 70px;
@@ -282,6 +309,13 @@ body {
 .log-entry.system { color: #888; font-style: italic; }
 .log-entry.action { color: var(--text-blue); }
 .log-entry.dialogue { color: var(--text-highlight); }
+.log-entry.error {
+  color: #ff6b6b;
+  border-left: 3px solid #ff4444;
+  padding-left: 8px;
+  font-style: italic;
+  opacity: 0.9;
+}
 
 /* Animation & Scrollbar */
 @keyframes pulse {

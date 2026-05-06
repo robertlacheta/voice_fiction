@@ -5,7 +5,7 @@ import { useVoiceRecorder } from './useVoiceRecorder';
 interface LogEntry {
   id: number;
   text: string;
-  type: 'system' | 'action' | 'dialogue';
+  type: 'system' | 'action' | 'dialogue' | 'error';
 }
 
 function App() {
@@ -31,8 +31,15 @@ function App() {
     ]);
   }, []);
 
-  const { status, errorMessage, startRecording, stopRecording } =
-    useVoiceRecorder(PLAYER_ID, onTranscript);
+  const onError = useCallback((message: string) => {
+    setLogs((prev) => [
+      ...prev,
+      { id: Date.now(), text: `⚠ ${message}`, type: 'error' },
+    ]);
+  }, []);
+
+  const { status, startRecording, stopRecording } =
+    useVoiceRecorder(PLAYER_ID, onTranscript, onError);
 
   const isRecording = status === 'recording';
   const isProcessing = status === 'processing';
@@ -110,23 +117,24 @@ function App() {
         </section>
 
         <section className="mic-area">
-          <button
-            id="mic-button"
-            className={`mic-button ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''} ${status === 'error' ? 'error' : ''}`}
-            onPointerDown={handlePointerDown}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            disabled={isProcessing}
-            aria-label={isRecording ? 'Nagrywanie – puść aby wysłać' : isProcessing ? 'Przetwarzanie…' : 'Przytrzymaj aby nagrać'}
-          >
-            <div className="mic-icon" />
-          </button>
-          {isProcessing && <p className="mic-hint">Przetwarzanie…</p>}
-          {!isProcessing && !isRecording && !errorMessage && (
-            <p className="mic-hint">Przytrzymaj i mów</p>
-          )}
-          {isRecording && <p className="mic-hint recording-hint">Nagrywanie… (maks. 5 s)</p>}
-          {errorMessage && <p className="mic-error">{errorMessage}</p>}
+          <div className="mic-container">
+            <button
+              id="mic-button"
+              className={`mic-button ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''} ${status === 'error' ? 'error' : ''}`}
+              onPointerDown={handlePointerDown}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
+              disabled={isProcessing}
+              aria-label={isRecording ? 'Nagrywanie – puść aby wysłać' : isProcessing ? 'Przetwarzanie…' : 'Przytrzymaj aby nagrać'}
+            >
+              <div className="mic-icon" />
+            </button>
+            {isProcessing && <p className="mic-hint">Przetwarzanie…</p>}
+            {!isProcessing && !isRecording && (
+              <p className="mic-hint">Przytrzymaj i mów</p>
+            )}
+            {isRecording && <p className="mic-hint recording-hint">Nagrywanie… (maks. 5 s)</p>}
+          </div>
         </section>
       </main>
 

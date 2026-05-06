@@ -4,7 +4,6 @@ export type RecorderStatus = 'idle' | 'recording' | 'processing' | 'error';
 
 export interface VoiceRecorderResult {
   status: RecorderStatus;
-  errorMessage: string | null;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
 }
@@ -15,9 +14,9 @@ const MAX_RECORDING_MS = 5_000; // twardy limit: 5 sekund
 export function useVoiceRecorder(
   playerId: string,
   onTranscript: (transcript: string) => void,
+  onError: (message: string) => void,
 ): VoiceRecorderResult {
   const [status, setStatus] = useState<RecorderStatus>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -60,23 +59,22 @@ export function useVoiceRecorder(
         onTranscript(data.transcript);
         setStatus('idle');
       } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : 'Nieznany błąd.');
+        const message = err instanceof Error ? err.message : 'Nieznany błąd.';
+        onError(message);
         setStatus('error');
       } finally {
         // Zawsze zwalniamy ślady mikrofonu
         streamRef.current?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
-        mediaRecorderRef.current = null;
         chunksRef.current = [];
       }
     },
-    [playerId, onTranscript],
+    [playerId, onTranscript, onError],
   );
 
   const startRecording = useCallback(async () => {
     if (status === 'recording' || status === 'processing') return;
 
-    setErrorMessage(null);
     chunksRef.current = [];
 
     let stream: MediaStream;
@@ -90,7 +88,7 @@ export function useVoiceRecorder(
       });
       streamRef.current = stream;
     } catch {
-      setErrorMessage('Brak dostępu do mikrofonu. Sprawdź uprawnienia w przeglądarce.');
+      onError('Brak dostępu do mikrofonu. Sprawdź uprawnienia w przeglądarce.');
       setStatus('error');
       return;
     }
@@ -126,7 +124,7 @@ export function useVoiceRecorder(
         mediaRecorderRef.current.stop();
       }
     }, MAX_RECORDING_MS);
-  }, [status, sendAudio]);
+  }, [status, sendAudio, onError]);
 
-  return { status, errorMessage, startRecording, stopRecording };
+  return { status, startRecording, stopRecording };
 }
