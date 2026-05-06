@@ -76,13 +76,13 @@ async def recognize_speech(
     # Dobierz konfigurację STT na podstawie typu MIME pliku
     content_type = (audio.content_type or "").lower()
 
-    if content_type in ("audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave"):
+    if content_type.startswith(("audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave")):
         # Dla WAV pomijamy encoding i sample_rate – Google czyta je z nagłówka WAV
         recognition_config = speech.RecognitionConfig(
             language_code="pl-PL",
             enable_automatic_punctuation=True,
         )
-    elif content_type in ("audio/webm", "audio/ogg"):
+    elif content_type.startswith(("audio/webm", "audio/ogg")):
         recognition_config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
             sample_rate_hertz=48000,
