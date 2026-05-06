@@ -12,7 +12,8 @@ _allowed_origins = [
     origin.strip()
     for origin in os.environ.get(
         "CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:4173",
+        "http://localhost:5173,http://localhost:4173,"
+        "https://voice-fiction-app-293322474475.europe-central2.run.app",
     ).split(",")
     if origin.strip()
 ]
