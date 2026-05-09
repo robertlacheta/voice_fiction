@@ -30,21 +30,21 @@ function App() {
   useEffect(() => {
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? '';
     console.log("Inicjalizacja sesji dla gracza:", PLAYER_ID, "pod adresem:", BACKEND_URL || "względnym");
-    
+
     // Inicjalizacja na backendzie
     fetch(`${BACKEND_URL}/api/init`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ player_id: PLAYER_ID }),
     })
-    .then(res => {
-      if (!res.ok) {
-        throw new Error(`HTTP Error: ${res.status} ${res.statusText}`);
-      }
-      return res.json();
-    })
-    .then(data => console.log("Sesja zainicjowana poprawnie:", data))
-    .catch(err => console.error("Failed to initialize session. Błąd sieci lub backendu:", err));
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP Error: ${res.status} ${res.statusText}`);
+        }
+        return res.json();
+      })
+      .then(data => console.log("Sesja zainicjowana poprawnie:", data))
+      .catch(err => console.error("Failed to initialize session. Błąd sieci lub backendu:", err));
 
     // Nasłuch zmian z Firestore
     const unsub = onSnapshot(doc(db, 'sessions', PLAYER_ID), (docSnap) => {
@@ -100,85 +100,45 @@ function App() {
 
   return (
     <div className="game-window">
-      {/* Left Column: HUD */}
-      <aside className="panel hud-left">
-        <div className="avatar-container">
-          {!avatarError ? (
-            <img
-              src="/avatar.png"
-              alt="Avatar"
-              className="avatar-img"
-              onError={() => setAvatarError(true)}
-            />
-          ) : (
-            <span className="avatar-placeholder">[ PORTRAIT ]</span>
-          )}
-        </div>
+      {/* Upper Zone: SCENE */}
+      <section className="scene-area">
+        <img
+          src="/tavern_interior.png"
+          alt="Tavern Interior"
+          className="illustration-img"
+          onError={(e) => (e.currentTarget.style.display = 'none')}
+        />
 
-        <div className="player-info">
-          <div className="player-name-row">
-            <span className="player-name">Thalia</span>
-          </div>
-
-          <div className="stat-bars">
-            <div className="bar-row">
-              <div className="bar-container">
-                <div className="bar-fill-hp" style={{ width: `${hp}%` }}></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="game-logo-container">
-          <img
-            src="/logo.png"
-            alt="Voice Fiction Logo"
-            className="game-logo"
-            onError={(e) => (e.currentTarget.style.display = 'none')}
-          />
-        </div>
-      </aside>
-
-      {/* Center Column: Illustration + Scene Description + Mic */}
-      <main className="center-column">
-        <section className="illustration-area">
-          <img
-            src="/tavern_interior.png"
-            alt="Tavern Interior"
-            className="illustration-img"
-            onError={(e) => (e.currentTarget.style.display = 'none')}
-          />
-        </section>
-
-        <section className="chat-area">
-          <p>{sceneDescription}</p>
-        </section>
-
-        <section className="mic-area">
-          <div className="mic-container">
-            <button
-              id="mic-button"
-              className={`mic-button ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''} ${status === 'error' ? 'error' : ''}`}
-              onPointerDown={handlePointerDown}
-              onPointerUp={handlePointerUp}
-              onPointerLeave={handlePointerUp}
-              disabled={isProcessing}
-              aria-label={isRecording ? 'Nagrywanie – puść aby wysłać' : isProcessing ? 'Przetwarzanie…' : 'Przytrzymaj aby nagrać'}
-            >
-              <div className="mic-icon" />
-            </button>
-            {isProcessing && <p className="mic-hint">Przetwarzanie…</p>}
-            {!isProcessing && !isRecording && (
-              <p className="mic-hint">Przytrzymaj i mów</p>
+        <div className="character-badge pixel-border-thin">
+          <div className="avatar-wrapper">
+            {!avatarError ? (
+              <img
+                src="/avatar.png"
+                alt="Avatar"
+                className="avatar-img"
+                onError={() => setAvatarError(true)}
+              />
+            ) : (
+              <span className="avatar-placeholder">PORTRAIT</span>
             )}
-            {isRecording && <p className="mic-hint recording-hint">Nagrywanie… (maks. 5 s)</p>}
           </div>
-        </section>
-      </main>
+          <div className="character-stats">
+            <span className="character-name">Thalia</span>
+            <div className="hp-bar-container">
+              <div className="hp-bar-fill" style={{ width: `${hp}%` }}></div>
+            </div>
+            <span className="hp-label">HP {hp}/100</span>
+          </div>
+        </div>
 
-      {/* Right Column: Game Log */}
-      <aside className="panel log-column">
-        <div className="log-header">■ GAME LOG ■</div>
-        <div className="log-content" ref={logEndRef}>
+        <div className="scene-description-overlay">
+          <div className="scene-description-text">{sceneDescription}</div>
+        </div>
+      </section>
+
+      {/* Lower Zone: DIALOG PANEL */}
+      <section className="dialog-panel">
+        <div className="game-log" ref={logEndRef}>
           {logs.map((log) => (
             <div key={log.id} className={`log-entry ${log.type}`}>
               {log.text}
@@ -186,7 +146,27 @@ function App() {
           ))}
           {isProcessing && <div className="log-entry system">⏳ Przetwarzanie…</div>}
         </div>
-      </aside>
+
+        <div className="log-separator"></div>
+
+        <div className="mic-area">
+          <button
+            className={`mic-button ${isRecording ? 'recording' : ''}`}
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            disabled={isProcessing}
+            aria-label="Mikrofon"
+          >
+            {isRecording && <div className="mic-pulse"></div>}
+            <div className="mic-icon"></div>
+          </button>
+
+          <span className="mic-status-text">
+            {isProcessing ? "Przetwarzanie..." : isRecording ? "Nagrywanie (max 5s)..." : "Kliknij i przytrzymaj by mówić"}
+          </span>
+        </div>
+      </section>
     </div>
   );
 }
