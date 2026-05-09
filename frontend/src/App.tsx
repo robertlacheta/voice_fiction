@@ -29,26 +29,39 @@ function App() {
 
   useEffect(() => {
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? '';
+    console.log("Inicjalizacja sesji dla gracza:", PLAYER_ID, "pod adresem:", BACKEND_URL || "względnym");
     
     // Inicjalizacja na backendzie
     fetch(`${BACKEND_URL}/api/init`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ player_id: PLAYER_ID }),
-    }).catch(err => console.error("Failed to initialize session", err));
+    })
+    .then(res => {
+      if (!res.ok) {
+        throw new Error(`HTTP Error: ${res.status} ${res.statusText}`);
+      }
+      return res.json();
+    })
+    .then(data => console.log("Sesja zainicjowana poprawnie:", data))
+    .catch(err => console.error("Failed to initialize session. Błąd sieci lub backendu:", err));
 
     // Nasłuch zmian z Firestore
     const unsub = onSnapshot(doc(db, 'sessions', PLAYER_ID), (docSnap) => {
+      console.log("Zdarzenie onSnapshot, doc exists?", docSnap.exists());
       if (docSnap.exists()) {
         const data = docSnap.data();
+        console.log("Pobrane dane z bazy:", data);
         if (data.hp !== undefined) setHp(data.hp);
         if (data.scene_description) setSceneDescription(data.scene_description);
         if (data.logs) setLogs(data.logs);
       }
+    }, (error) => {
+      console.error("Błąd onSnapshot Firestore:", error);
     });
 
     return () => unsub();
-  }, []);
+  }, [PLAYER_ID]);
 
   const onTranscript = useCallback((transcript: string) => {
     // Nie dodajemy logu ręcznie – polegamy na tym, że po pomyślnym wysłaniu
