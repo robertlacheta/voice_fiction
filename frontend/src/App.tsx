@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import './App.css';
 import { useVoiceRecorder } from './useVoiceRecorder';
@@ -27,11 +27,16 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [sceneDescription, setSceneDescription] = useState("Ładowanie...");
 
+  const initStartedRef = useRef(false);
+
+  // Efekt do inicjalizacji sesji (tylko raz)
   useEffect(() => {
+    if (initStartedRef.current) return;
+    initStartedRef.current = true;
+
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? '';
     console.log("Inicjalizacja sesji dla gracza:", PLAYER_ID, "pod adresem:", BACKEND_URL || "względnym");
 
-    // Inicjalizacja na backendzie
     fetch(`${BACKEND_URL}/api/init`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -44,17 +49,37 @@ function App() {
         return res.json();
       })
       .then(data => console.log("Sesja zainicjowana poprawnie:", data))
-      .catch(err => console.error("Failed to initialize session. Błąd sieci lub backendu:", err));
+      .catch(err => console.error("Failed to initialize session:", err));
+  }, [PLAYER_ID]);
 
-    // Nasłuch zmian z Firestore
-    const unsub = onSnapshot(doc(db, 'sessions', PLAYER_ID), (docSnap) => {
-      console.log("Zdarzenie onSnapshot, doc exists?", docSnap.exists());
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        console.log("Pobrane dane z bazy:", data);
-        if (data.hp !== undefined) setHp(data.hp);
-        if (data.scene_description) setSceneDescription(data.scene_description);
-        if (data.logs) setLogs(data.logs);
+  // Efekt do nasłuchu bazy danych (wznawiany poprawnie przez Reacta)
+  useEffect(() => {
+    const turnsRef = collection(db, 'sessions', PLAYER_ID, 'turns');
+    const q = query(turnsRef, orderBy('turn_id', 'asc'));
+
+    const unsub = onSnapshot(q, (querySnapshot) => {
+      console.log("Zdarzenie onSnapshot dla tur. Ilość dokumentów:", querySnapshot.size);
+      if (!querySnapshot.empty) {
+        const latestDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
+        const latestData = latestDoc.data();
+
+        if (latestData.hp !== undefined) setHp(latestData.hp);
+        if (latestData.scene_description) setSceneDescription(latestData.scene_description);
+
+        const allLogs: LogEntry[] = [];
+        querySnapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.segments && Array.isArray(data.segments)) {
+            data.segments.forEach((seg: { type?: LogEntry['type'], text: string }, idx: number) => {
+              allLogs.push({
+                id: `${doc.id}_${idx}`,
+                text: seg.text,
+                type: seg.type || 'system'
+              });
+            });
+          }
+        });
+        setLogs(allLogs);
       }
     }, (error) => {
       console.error("Błąd onSnapshot Firestore:", error);

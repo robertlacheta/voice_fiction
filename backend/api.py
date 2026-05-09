@@ -6,31 +6,22 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from google.cloud import speech
 from google.oauth2 import service_account
 
-from firestore_client import init_session, add_log
+from firestore_client import init_session, add_turn, get_latest_state
+from ai_engine import process_turn
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Ścieżka do klucza JSON – domyślnie obok tego pliku, nadpisywalna przez env
 _CREDENTIALS_PATH = os.environ.get(
     "GOOGLE_APPLICATION_CREDENTIALS",
     os.path.join(os.path.dirname(__file__), "gcp-credentials.json"),
 )
 
-# Limit rozmiaru payloadu audio.
-# WEBM_OPUS ~6 s @ 256 kbps ≈ 192 KB – przyjmujemy 200 KB z marginesem.
-# Nadpisywalny przez zmienną środowiskową MAX_AUDIO_BYTES.
 _MAX_AUDIO_BYTES: int = int(os.environ.get("MAX_AUDIO_BYTES", 200 * 1024))
 
 
 def _get_speech_client() -> speech.SpeechClient:
-    """Tworzy SpeechClient.
-
-    Lokalnie: używa pliku JSON wskazanego przez GOOGLE_APPLICATION_CREDENTIALS.
-    Na Cloud Run: używa Application Default Credentials (ADC) – service account
-                  przypisany do serwisu Cloud Run, bez żadnego pliku.
-    """
     if os.path.isfile(_CREDENTIALS_PATH):
         credentials = service_account.Credentials.from_service_account_file(
             _CREDENTIALS_PATH,
@@ -38,7 +29,6 @@ def _get_speech_client() -> speech.SpeechClient:
         )
         return speech.SpeechClient(credentials=credentials)
 
-    # Cloud Run / ADC – brak pliku, używamy tożsamości serwisu
     logger.info("Brak pliku credentials – używam Application Default Credentials (ADC).")
     return speech.SpeechClient()
 
@@ -49,9 +39,6 @@ class InitRequest(BaseModel):
 
 @router.post("/api/init")
 def initialize_session(req: InitRequest):
-    """
-    Inicjalizuje nową sesję lub zwraca istniejącą z bazy danych.
-    """
     try:
         session_data = init_session(req.player_id)
         return session_data
@@ -65,11 +52,6 @@ async def recognize_speech(
     audio: UploadFile = File(..., description="Plik audio do transkrypcji"),
     player_id: str = Form(..., description="Identyfikator gracza"),
 ):
-    """
-    Przyjmuje nagranie audio i player_id (multipart/form-data),
-    następnie uruchamia Google Cloud Speech-to-Text i zwraca transkrypcję.
-    Zapisuje akcję gracza i zmockowaną odpowiedź AI do bazy Firestore.
-    """
     try:
         audio_bytes = await audio.read()
     except Exception as e:
@@ -94,11 +76,9 @@ async def recognize_speech(
             ),
         )
 
-    # Dobierz konfigurację STT na podstawie typu MIME pliku
     content_type = (audio.content_type or "").lower()
 
     if content_type.startswith(("audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave")):
-        # Dla WAV pomijamy encoding i sample_rate – Google czyta je z nagłówka WAV
         recognition_config = speech.RecognitionConfig(
             language_code="pl-PL",
             enable_automatic_punctuation=True,
@@ -143,16 +123,27 @@ async def recognize_speech(
     if not transcript:
         raise HTTPException(status_code=400, detail="Nie udało się rozpoznać mowy. Spróbuj mówić głośniej i wyraźniej.")
 
-    # 1. Zapis akcji gracza do bazy
     try:
-        add_log(player_id, transcript, log_type="action")
+        current_state = get_latest_state(player_id)
         
-        # 2. Tymczasowo (do momentu implementacji AI): dodaj udawaną rozbitą odpowiedź
-        add_log(player_id, "Barman przeciera powoli blat szmatką, spoglądając na ciebie spode łba.", log_type="narration")
-        add_log(player_id, "Dobrze powiedziane, podróżniku. Ale co dalej?", log_type="dialogue")
-        add_log(player_id, "Opiera ciężkie dłonie na drewnie i czeka na twój ruch.", log_type="narration")
+        # 1. Zapisujemy akcję gracza jako osobną turę (zabezpiecza to historię, nawet jeśli AI padnie)
+        player_turn = {
+            "status": current_state.get("status", "active") if current_state else "active",
+            "hp": current_state.get("hp", 100) if current_state else 100,
+            "location": current_state.get("location", "tavern") if current_state else "tavern",
+            "scene_description": current_state.get("scene_description", "") if current_state else "",
+            "turn_source": "player",
+            "segments": [{"type": "action", "text": transcript}]
+        }
+        add_turn(player_id, player_turn)
+        
+        # 2. Przekazujemy akcję do silnika AI i zapisujemy wynik jako odpowiedź AI
+        ai_turn = process_turn(player_id, transcript)
+        add_turn(player_id, ai_turn)
+        
     except Exception as e:
-        logger.error("Błąd podczas zapisywania do Firestore dla player_id=%s: %s", player_id, e)
+        logger.error("Błąd podczas procesowania tury dla player_id=%s: %s", player_id, e)
+        raise HTTPException(status_code=500, detail=f"Błąd silnika AI: {str(e)}")
 
     return {
         "player_id": player_id,

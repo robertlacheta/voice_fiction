@@ -13,7 +13,6 @@ _CREDENTIALS_PATH = os.environ.get(
 )
 
 def _get_firestore_client() -> firestore.Client:
-    """Tworzy klienta Firestore, używając pliku JSON lub ADC."""
     if os.path.isfile(_CREDENTIALS_PATH):
         credentials = service_account.Credentials.from_service_account_file(
             _CREDENTIALS_PATH,
@@ -24,81 +23,78 @@ def _get_firestore_client() -> firestore.Client:
     logger.info("Brak pliku credentials – używam Application Default Credentials (ADC) dla Firestore.")
     return firestore.Client()
 
-# Inicjalizacja klienta przy starcie modułu
 try:
     db = _get_firestore_client()
 except Exception as e:
     logger.error(f"Nie udało się zainicjalizować klienta Firestore: {e}")
     db = None
 
-def init_session(player_id: str) -> dict:
-    """
-    Sprawdza, czy sesja istnieje. Jeśli nie, tworzy nową z domyślnymi wartościami.
-    Zwraca dane sesji.
-    """
+def get_history(player_id: str, limit: int = 15) -> list:
+    """Pobiera chronologiczną historię tur gracza."""
     if not db:
         raise RuntimeError("Klient Firestore nie jest zainicjalizowany.")
-
-    doc_ref = db.collection("sessions").document(player_id)
-    doc = doc_ref.get()
-
-    if doc.exists:
-        logger.info(f"Sesja dla {player_id} już istnieje.")
+    
+    turns_ref = db.collection("sessions").document(player_id).collection("turns")
+    query = turns_ref.order_by("turn_id", direction=firestore.Query.DESCENDING).limit(limit)
+    
+    results = []
+    for doc in query.stream():
         data = doc.to_dict()
-        if 'created_at' in data and data['created_at']:
-            data['created_at'] = str(data['created_at'])
-        if 'updated_at' in data and data['updated_at']:
-            data['updated_at'] = str(data['updated_at'])
-        return data
+        results.append(data)
+        
+    results.reverse() # Zwracamy od najstarszej do najnowszej
+    return results
 
+def get_latest_state(player_id: str) -> dict:
+    """Zwraca ostatnią turę, która reprezentuje aktualny stan gry."""
+    history = get_history(player_id, limit=1)
+    if history:
+        return history[0]
+    return None
+
+def add_turn(player_id: str, turn_data: dict) -> dict:
+    """Dodaje nową turę do historii gracza."""
+    if not db:
+        raise RuntimeError("Klient Firestore nie jest zainicjalizowany.")
+        
     now = datetime.now(timezone.utc)
-    new_session = {
-        "player_id": player_id,
+    turn_id = int(now.timestamp() * 1000)
+    
+    turn_data["turn_id"] = turn_id
+    turn_data["player_id"] = player_id
+    turn_data["created_at"] = firestore.SERVER_TIMESTAMP
+    
+    doc_ref = db.collection("sessions").document(player_id).collection("turns").document(str(turn_id))
+    doc_ref.set(turn_data)
+    
+    logger.info(f"Dodano turę {turn_id} dla {player_id}.")
+    
+    safe_data = dict(turn_data)
+    safe_data["created_at"] = now.isoformat()
+    return safe_data
+
+def init_session(player_id: str) -> dict:
+    """Inicjalizuje nową grę, tworząc pierwszą turę, chyba że już istnieje historia."""
+    latest = get_latest_state(player_id)
+    if latest:
+        logger.info(f"Sesja dla {player_id} już istnieje.")
+        if 'created_at' in latest and latest['created_at']:
+            latest['created_at'] = str(latest['created_at'])
+        return latest
+
+    # Nowa gra
+    first_turn = {
         "status": "active",
-        "stage": 1,
         "hp": 100,
         "location": "tavern",
         "scene_description": "Znajdujesz się w zadymionej karczmie. Za barem stoi potężny barman.",
-        "logs": [
+        "turn_source": "system",
+        "segments": [
             {
-                "id": str(int(now.timestamp() * 1000)),
-                "text": "Wchodzisz do Karczmy pod Zdechłym Dzikiem.",
                 "type": "system",
-                "timestamp": now.isoformat()
+                "text": "Wchodzisz do Karczmy pod Zdechłym Dzikiem."
             }
-        ],
-        "created_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP
+        ]
     }
-
-    doc_ref.set(new_session)
-    logger.info(f"Utworzono nową sesję dla {player_id}.")
     
-    # Bezpieczna kopia dla FastAPI bez obiektów Sentinel
-    safe_session = dict(new_session)
-    safe_session["created_at"] = now.isoformat()
-    safe_session["updated_at"] = now.isoformat()
-    return safe_session
-
-def add_log(player_id: str, text: str, log_type: str):
-    """
-    Atomowo dodaje nowy wpis logu do tablicy 'logs' w dokumencie sesji.
-    """
-    if not db:
-        raise RuntimeError("Klient Firestore nie jest zainicjalizowany.")
-
-    doc_ref = db.collection("sessions").document(player_id)
-    
-    now = datetime.now(timezone.utc)
-    new_log = {
-        "id": str(int(now.timestamp() * 1000)),
-        "text": text,
-        "type": log_type,
-        "timestamp": now.isoformat()
-    }
-
-    doc_ref.update({
-        "logs": firestore.ArrayUnion([new_log]),
-        "updated_at": firestore.SERVER_TIMESTAMP
-    })
-    logger.info(f"Dodano log [{log_type}] do sesji {player_id}.")
+    return add_turn(player_id, first_turn)
