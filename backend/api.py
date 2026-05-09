@@ -1,9 +1,12 @@
 import logging
 import os
+from pydantic import BaseModel
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from google.cloud import speech
 from google.oauth2 import service_account
+
+from firestore_client import init_session, add_log
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,23 @@ def _get_speech_client() -> speech.SpeechClient:
     return speech.SpeechClient()
 
 
+class InitRequest(BaseModel):
+    player_id: str
+
+
+@router.post("/api/init")
+def initialize_session(req: InitRequest):
+    """
+    Inicjalizuje nową sesję lub zwraca istniejącą z bazy danych.
+    """
+    try:
+        session_data = init_session(req.player_id)
+        return session_data
+    except Exception as e:
+        logger.error(f"Błąd inicjalizacji sesji dla {req.player_id}: {e}")
+        raise HTTPException(status_code=500, detail="Nie udało się zainicjalizować sesji.")
+
+
 @router.post("/api/recognize")
 async def recognize_speech(
     audio: UploadFile = File(..., description="Plik audio do transkrypcji"),
@@ -48,6 +68,7 @@ async def recognize_speech(
     """
     Przyjmuje nagranie audio i player_id (multipart/form-data),
     następnie uruchamia Google Cloud Speech-to-Text i zwraca transkrypcję.
+    Zapisuje akcję gracza i zmockowaną odpowiedź AI do bazy Firestore.
     """
     try:
         audio_bytes = await audio.read()
@@ -115,9 +136,21 @@ async def recognize_speech(
         result.alternatives[0].transcript
         for result in response.results
         if result.alternatives
-    )
+    ).strip()
 
     logger.info("player_id=%s | transcript=%r", player_id, transcript)
+
+    if not transcript:
+        raise HTTPException(status_code=400, detail="Nie udało się rozpoznać mowy. Spróbuj mówić głośniej i wyraźniej.")
+
+    # 1. Zapis akcji gracza do bazy
+    try:
+        add_log(player_id, transcript, log_type="action")
+        
+        # 2. Tymczasowo (do momentu implementacji AI): dodaj udawaną odpowiedź
+        add_log(player_id, "Dobrze powiedziane, podróżniku. Ale co dalej?", log_type="dialogue")
+    except Exception as e:
+        logger.error("Błąd podczas zapisywania do Firestore dla player_id=%s: %s", player_id, e)
 
     return {
         "player_id": player_id,

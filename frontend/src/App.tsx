@@ -1,40 +1,65 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from './firebase';
 import './App.css';
 import { useVoiceRecorder } from './useVoiceRecorder';
 
 interface LogEntry {
-  id: number;
+  id: number | string;
   text: string;
   type: 'system' | 'action' | 'dialogue' | 'error';
 }
 
-function App() {
-  const PLAYER_ID = 'player_001';
+function getOrCreatePlayerId() {
+  const stored = localStorage.getItem('vf_player_id');
+  if (stored) return stored;
+  const newId = 'player_' + Math.random().toString(36).substring(2, 10);
+  localStorage.setItem('vf_player_id', newId);
+  return newId;
+}
 
-  const [hp] = useState(100);
+function App() {
+  const [PLAYER_ID] = useState(() => getOrCreatePlayerId());
+
+  const [hp, setHp] = useState(100);
   const [avatarError, setAvatarError] = useState(false);
 
-  const [logs, setLogs] = useState<LogEntry[]>([
-    { id: 1, text: "Thalia enters the tavern.", type: 'system' },
-    { id: 2, text: "Thalia: Heard any good rumors lately, barkeep?", type: 'action' },
-    { id: 3, text: "Bartender: Aye, heard there's trouble in the woods to the east. Bandits, maybe worse...", type: 'dialogue' },
-  ]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [sceneDescription, setSceneDescription] = useState("Ładowanie...");
 
-  const [sceneDescription] = useState(
-    "You're in a dimly lit tavern. A burly bartender looks up at you. The air is thick with the smell of roasted meat and old ale."
-  );
+  useEffect(() => {
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? '';
+    
+    // Inicjalizacja na backendzie
+    fetch(`${BACKEND_URL}/api/init`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_id: PLAYER_ID }),
+    }).catch(err => console.error("Failed to initialize session", err));
+
+    // Nasłuch zmian z Firestore
+    const unsub = onSnapshot(doc(db, 'sessions', PLAYER_ID), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.hp !== undefined) setHp(data.hp);
+        if (data.scene_description) setSceneDescription(data.scene_description);
+        if (data.logs) setLogs(data.logs);
+      }
+    });
+
+    return () => unsub();
+  }, []);
 
   const onTranscript = useCallback((transcript: string) => {
-    setLogs((prev) => [
-      ...prev,
-      { id: Date.now(), text: `Thalia: ${transcript}`, type: 'action' },
-    ]);
+    // Nie dodajemy logu ręcznie – polegamy na tym, że po pomyślnym wysłaniu
+    // backend zapisze go w bazie, co wywoła onSnapshot i zaktualizuje UI.
+    console.log("Transkrypcja wygenerowana:", transcript);
   }, []);
 
   const onError = useCallback((message: string) => {
     setLogs((prev) => [
       ...prev,
-      { id: Date.now(), text: `⚠ ${message}`, type: 'error' },
+      { id: Date.now().toString(), text: `⚠ ${message}`, type: 'error' },
     ]);
   }, []);
 
@@ -59,7 +84,6 @@ function App() {
   const handlePointerUp = () => {
     if (isRecording) stopRecording();
   };
-
 
   return (
     <div className="game-window">
