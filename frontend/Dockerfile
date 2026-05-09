@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instalacja zależności
-RUN npm ci
+RUN npm install
 
 # Kopiowanie reszty kodu (z pominięciem node_modules dzięki .dockerignore - upewnij się, że .gitignore działa też dla dockera)
 COPY . .
