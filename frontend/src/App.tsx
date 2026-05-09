@@ -7,7 +7,7 @@ import { useVoiceRecorder } from './useVoiceRecorder';
 interface LogEntry {
   id: number | string;
   text: string;
-  type: 'system' | 'action' | 'dialogue' | 'error';
+  type: 'system' | 'action' | 'dialogue' | 'error' | 'narration';
 }
 
 function getOrCreatePlayerId() {

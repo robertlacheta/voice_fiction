@@ -197,7 +197,8 @@ body {
   word-wrap: break-word;
 }
 
-.log-entry.system {
+.log-entry.system,
+.log-entry.narration {
   color: var(--text-main);
 }
 

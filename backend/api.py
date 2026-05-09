@@ -147,8 +147,10 @@ async def recognize_speech(
     try:
         add_log(player_id, transcript, log_type="action")
         
-        # 2. Tymczasowo (do momentu implementacji AI): dodaj udawaną odpowiedź
+        # 2. Tymczasowo (do momentu implementacji AI): dodaj udawaną rozbitą odpowiedź
+        add_log(player_id, "Barman przeciera powoli blat szmatką, spoglądając na ciebie spode łba.", log_type="narration")
         add_log(player_id, "Dobrze powiedziane, podróżniku. Ale co dalej?", log_type="dialogue")
+        add_log(player_id, "Opiera ciężkie dłonie na drewnie i czeka na twój ruch.", log_type="narration")
     except Exception as e:
         logger.error("Błąd podczas zapisywania do Firestore dla player_id=%s: %s", player_id, e)
 
