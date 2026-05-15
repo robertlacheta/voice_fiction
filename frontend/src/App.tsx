@@ -115,12 +115,13 @@ function App() {
     }
   }, [logs]);
 
-  // Naciśnij i przytrzymaj = nagrywanie; puść = wyślij
-  const handlePointerDown = () => {
-    if (!isProcessing) void startRecording();
-  };
-  const handlePointerUp = () => {
-    if (isRecording) stopRecording();
+  const handleMicClick = () => {
+    if (isProcessing) return;
+    if (isRecording) {
+      stopRecording();
+    } else {
+      void startRecording();
+    }
   };
 
   return (
@@ -177,9 +178,7 @@ function App() {
         <div className="mic-area">
           <button
             className={`mic-button ${isRecording ? 'recording' : ''}`}
-            onPointerDown={handlePointerDown}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
+            onClick={handleMicClick}
             disabled={isProcessing}
             aria-label="Mikrofon"
           >
@@ -188,7 +187,7 @@ function App() {
           </button>
 
           <span className="mic-status-text">
-            {isProcessing ? "Przetwarzanie..." : isRecording ? "Nagrywanie (max 5s)..." : "Kliknij i przytrzymaj by mówić"}
+            {isProcessing ? "Przetwarzanie..." : isRecording ? "Nagrywanie (max 8s)..." : "Kliknij raz by mówić"}
           </span>
         </div>
       </section>

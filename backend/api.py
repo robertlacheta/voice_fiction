@@ -18,7 +18,7 @@ _CREDENTIALS_PATH = os.environ.get(
     os.path.join(os.path.dirname(__file__), "gcp-credentials.json"),
 )
 
-_MAX_AUDIO_BYTES: int = int(os.environ.get("MAX_AUDIO_BYTES", 200 * 1024))
+_MAX_AUDIO_BYTES: int = int(os.environ.get("MAX_AUDIO_BYTES", 350 * 1024))
 
 
 def _get_speech_client() -> speech.SpeechClient:

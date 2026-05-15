@@ -9,7 +9,7 @@ export interface VoiceRecorderResult {
 }
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? '';
-const MAX_RECORDING_MS = 5_000; // twardy limit: 5 sekund
+const MAX_RECORDING_MS = 8_000; // twardy limit: 8 sekund
 
 export function useVoiceRecorder(
   playerId: string,
