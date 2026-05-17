@@ -108,6 +108,7 @@ function App() {
   const isProcessing = status === 'processing';
 
   const logEndRef = useRef<HTMLDivElement>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (logEndRef.current) {
@@ -121,6 +122,32 @@ function App() {
       stopRecording();
     } else {
       void startRecording();
+    }
+  };
+
+  const handleResetGame = async () => {
+    if (!window.confirm("Czy na pewno chcesz zresetować grę? Cały postęp zostanie utracony.")) {
+      return;
+    }
+    
+    setIsSettingsOpen(false);
+    setSceneDescription("Resetowanie...");
+    setLogs([]);
+    
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? '';
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player_id: PLAYER_ID }),
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP Error: ${res.status}`);
+      }
+      console.log("Gra została zresetowana.");
+    } catch (err) {
+      console.error("Błąd resetowania gry:", err);
+      onError("Nie udało się zresetować gry.");
     }
   };
 
@@ -156,6 +183,14 @@ function App() {
             <span className="hp-label">HP {hp}/100</span>
           </div>
         </div>
+        
+        <button 
+          className="settings-button pixel-border-thin" 
+          onClick={() => setIsSettingsOpen(true)}
+          aria-label="Ustawienia"
+        >
+          ⚙️
+        </button>
 
         <div className="scene-description-overlay">
           <div className="scene-description-text">{sceneDescription}</div>
@@ -191,6 +226,21 @@ function App() {
           </span>
         </div>
       </section>
+
+      {isSettingsOpen && (
+        <div className="settings-modal-overlay">
+          <div className="settings-modal pixel-border">
+            <h2>USTAWIENIA</h2>
+            <p>Twój ID: {PLAYER_ID}</p>
+            <button className="reset-button pixel-border-thin" onClick={handleResetGame}>
+              Zacznij od nowa
+            </button>
+            <button className="close-modal-button" onClick={() => setIsSettingsOpen(false)}>
+              Zamknij
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

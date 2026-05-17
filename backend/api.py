@@ -5,9 +5,9 @@ from pydantic import BaseModel
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from google.cloud import speech
 from google.oauth2 import service_account
-
-from firestore_client import init_session, add_turn, get_latest_state
+from firestore_client import init_session, add_turn, get_latest_state, reset_session
 from ai_engine import process_turn
+from pubsub_client import publish_game_started
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +41,25 @@ class InitRequest(BaseModel):
 def initialize_session(req: InitRequest):
     try:
         session_data = init_session(req.player_id)
-        
+
         # Wysyłamy asynchroniczne powiadomienie do Pub/Sub
         publish_game_started(req.player_id)
-        
+
         return session_data
     except Exception as e:
         logger.error(f"Błąd inicjalizacji sesji dla {req.player_id}: {e}")
         raise HTTPException(status_code=500, detail="Nie udało się zainicjalizować sesji.")
+
+
+@router.post("/api/reset")
+def reset_game_session(req: InitRequest):
+    try:
+        session_data = reset_session(req.player_id)
+        publish_game_started(req.player_id)
+        return session_data
+    except Exception as e:
+        logger.error(f"Błąd resetowania sesji dla {req.player_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/recognize")

@@ -98,3 +98,31 @@ def init_session(player_id: str) -> dict:
     }
     
     return add_turn(player_id, first_turn)
+
+def reset_session(player_id: str) -> dict:
+    """Czyści historię gracza i rozpoczyna nową grę."""
+    if not db:
+        raise RuntimeError("Klient Firestore nie jest zainicjalizowany.")
+        
+    logger.info(f"Resetowanie sesji dla gracza {player_id}...")
+    turns_ref = db.collection("sessions").document(player_id).collection("turns")
+    
+    # Usuwanie wszystkich dokumentów z użyciem transakcji wsadowej (batch)
+    docs = turns_ref.stream()
+    batch = db.batch()
+    count = 0
+    
+    for doc in docs:
+        batch.delete(doc.reference)
+        count += 1
+        # Limit transakcji wsadowej w Firestore to 500 operacji
+        if count >= 490:
+            batch.commit()
+            batch = db.batch()
+            count = 0
+            
+    if count > 0:
+        batch.commit()
+        
+    logger.info(f"Usunięto stare tury dla gracza {player_id}.")
+    return init_session(player_id)

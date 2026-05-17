@@ -51,6 +51,7 @@ body {
 }
 
 .game-window {
+  position: relative;
   width: 100%;
   max-width: 1000px;
   height: 94vh;
