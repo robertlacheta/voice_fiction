@@ -41,6 +41,10 @@ class InitRequest(BaseModel):
 def initialize_session(req: InitRequest):
     try:
         session_data = init_session(req.player_id)
+        
+        # Wysyłamy asynchroniczne powiadomienie do Pub/Sub
+        publish_game_started(req.player_id)
+        
         return session_data
     except Exception as e:
         logger.error(f"Błąd inicjalizacji sesji dla {req.player_id}: {e}")

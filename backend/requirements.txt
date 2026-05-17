@@ -4,3 +4,4 @@ google-cloud-speech
 python-multipart
 google-cloud-firestore
 google-cloud-aiplatform
+google-cloud-pubsub
