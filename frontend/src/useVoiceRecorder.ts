@@ -112,10 +112,11 @@ export function useVoiceRecorder(
       const blob = new Blob(chunksRef.current, {
         type: recorder.mimeType || 'audio/webm',
       });
-      void sendAudio(blob);
+      // Krótkie opóźnienie — daje marginens na końcowe fragmenty dźwięku
+      setTimeout(() => void sendAudio(blob), 200);
     };
 
-    recorder.start();
+    recorder.start(200); // zbiera dane co 200ms (zabezpieczenie przed utratą danych)
     setStatus('recording');
 
     // Twardy limit – bezwzględne zatrzymanie po MAX_RECORDING_MS

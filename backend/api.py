@@ -96,13 +96,15 @@ async def recognize_speech(
     if content_type.startswith(("audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave")):
         recognition_config = speech.RecognitionConfig(
             language_code="pl-PL",
+            model="latest_long",  # lepszy model dla naturalnej mowy konwersacyjnej
             enable_automatic_punctuation=True,
         )
     elif content_type.startswith(("audio/webm", "audio/ogg")):
         recognition_config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
-            sample_rate_hertz=48000,
+            # Nie ustawiamy sample_rate_hertz — Google STT odczytuje go z kontenera WebM
             language_code="pl-PL",
+            model="latest_long",  # lepszy model dla naturalnej mowy konwersacyjnej
             enable_automatic_punctuation=True,
         )
     else:
