@@ -1,12 +1,19 @@
 import os
 import json
 import logging
+import google.auth
 from google.cloud import pubsub_v1
 from google.oauth2 import service_account
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "project-156a0c69-6d30-45a1-bd9")
+# Próbujemy wykryć ID projektu automatycznie
+try:
+    _, default_project_id = google.auth.default()
+except Exception:
+    default_project_id = None
+
+_PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", default_project_id or "project-156a0c69-6d30-45a1-bd9")
 _TOPIC_ID = "game-events"
 
 _CREDENTIALS_PATH = os.environ.get(

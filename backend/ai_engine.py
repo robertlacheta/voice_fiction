@@ -2,6 +2,7 @@ import logging
 import json
 import vertexai
 import os
+import google.auth
 from vertexai.generative_models import GenerativeModel, GenerationConfig
 from firestore_client import get_history
 
@@ -9,7 +10,13 @@ from google.oauth2 import service_account
 
 logger = logging.getLogger(__name__)
 
-project_id = os.environ.get("VITE_FIREBASE_PROJECT_ID", "project-156a0c69-6d30-45a1-bd9")
+# Próbujemy wykryć ID projektu automatycznie
+try:
+    _, default_project_id = google.auth.default()
+except Exception:
+    default_project_id = None
+
+project_id = os.environ.get("VITE_FIREBASE_PROJECT_ID", default_project_id or "project-156a0c69-6d30-45a1-bd9")
 location = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
 credentials_path = os.environ.get(
     "GOOGLE_APPLICATION_CREDENTIALS",
