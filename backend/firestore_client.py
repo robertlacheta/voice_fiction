@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timezone
 from google.cloud import firestore
 from google.oauth2 import service_account
+from storage_client import generate_signed_url
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,38 @@ def add_turn(player_id: str, turn_data: dict) -> dict:
     turn_data["player_id"] = player_id
     turn_data["created_at"] = firestore.SERVER_TIMESTAMP
     
+    # Automatyczna zmiana lokacji na podstawie stanu gry (HP/Status)
+    hp = turn_data.get("hp", 100)
+    status = turn_data.get("status", "active")
+    
+    if hp <= 0 or status == "game_over":
+        turn_data["location"] = "failure"
+    elif status == "victory":
+        turn_data["location"] = "victory"
+
+    # Obsługa assetów z Cloud Storage w zależności od lokalizacji
+    location = turn_data.get("location", "tavern")
+    background_path = "assets/scenes/tavern_interior.png"
+    audio_path = "audio/Background music/Tawerna.webm"
+    
+    if location == "forest":
+        background_path = "assets/scenes/forest_road.png"
+        audio_path = "audio/Background music/Las.webm"
+    elif location == "duel":
+        background_path = "assets/scenes/duel_scene.png" # Walka toczy się w lesie
+        audio_path = "audio/Background music/Walka.webm"
+    elif location == "victory":
+        background_path = "assets/scenes/victory.png"
+        audio_path = "audio/Background music/Victory.webm"
+    elif location == "failure":
+        background_path = "assets/scenes/failure.png"
+        audio_path = "audio/Background music/Failure.webm"
+        
+    turn_data["background_url"] = generate_signed_url(background_path, expiration_minutes=60)
+    turn_data["audio_url"] = generate_signed_url(audio_path, expiration_minutes=60)
+    turn_data["background_key"] = background_path
+    turn_data["audio_key"] = audio_path
+    
     doc_ref = db.collection("sessions").document(player_id).collection("turns").document(str(turn_id))
     doc_ref.set(turn_data)
     
@@ -108,15 +141,14 @@ def reset_session(player_id: str) -> dict:
     turns_ref = db.collection("sessions").document(player_id).collection("turns")
     
     # Usuwanie wszystkich dokumentów z użyciem transakcji wsadowej (batch)
-    docs = turns_ref.stream()
+    docs = list(turns_ref.stream())
     batch = db.batch()
     count = 0
     
     for doc in docs:
         batch.delete(doc.reference)
         count += 1
-        # Limit transakcji wsadowej w Firestore to 500 operacji
-        if count >= 490:
+        if count >= 400:
             batch.commit()
             batch = db.batch()
             count = 0

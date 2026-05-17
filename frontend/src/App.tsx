@@ -18,6 +18,16 @@ function getOrCreatePlayerId() {
   return newId;
 }
 
+// Ekstraktuje ścieżkę pliku z signed URL (bez parametrów query)
+// np. https://storage.googleapis.com/bucket/audio/Tawerna.webm?X-Goog-... → /bucket/audio/Tawerna.webm
+function getUrlPath(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
+}
+
 function App() {
   const [PLAYER_ID] = useState(() => getOrCreatePlayerId());
 
@@ -26,8 +36,87 @@ function App() {
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [sceneDescription, setSceneDescription] = useState("Ładowanie...");
+  const [backgroundUrl, setBackgroundUrl] = useState<string>("/tavern_interior.png");
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [location, setLocation] = useState<string>("tavern");
 
+  const audioRef = useRef<HTMLAudioElement>(null);
   const initStartedRef = useRef(false);
+  const logEndRef = useRef<HTMLDivElement>(null);
+  const fadeRafRef = useRef<number | null>(null);
+  // Śledzi ścieżkę pliku (bez signed params) aktualnie załadowanego w audio/img
+  const currentAudioPathRef = useRef<string | null>(null);
+  const currentBgPathRef = useRef<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const fadeAudio = useCallback((targetVolume: number, duration: number) => {
+    if (!audioRef.current) return;
+    const audio = audioRef.current;
+    const startVolume = audio.volume;
+    const startTime = performance.now();
+
+    if (fadeRafRef.current !== null) {
+      cancelAnimationFrame(fadeRafRef.current);
+    }
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      audio.volume = startVolume + (targetVolume - startVolume) * progress;
+      if (progress < 1) {
+        fadeRafRef.current = requestAnimationFrame(tick);
+      } else {
+        fadeRafRef.current = null;
+      }
+    };
+
+    fadeRafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
+
+  const onTranscript = useCallback((transcript: string) => {
+    console.log("Transkrypcja wygenerowana:", transcript);
+    // Pokaż transkrypt optymistycznie w logu natychmiast po rozpoznaniu
+    setPendingTranscript(transcript);
+  }, []);
+
+  const onError = useCallback((message: string) => {
+    setLogs((prev) => [
+      ...prev,
+      { id: Date.now().toString(), text: `⚠ ${message}`, type: 'error' },
+    ]);
+  }, []);
+
+  const { status, startRecording, stopRecording } =
+    useVoiceRecorder(PLAYER_ID, onTranscript, onError);
+
+  const isRecording = status === 'recording';
+  const isProcessing = status === 'processing';
+
+  // Efekt do dynamicznej regulacji głośności z płynnym fade
+  // Wyciszamy tylko podczas nagrywania — podczas przetwarzania muzyka wraca
+  useEffect(() => {
+    if (isRecording) {
+      fadeAudio(0, 300);
+    } else {
+      const targetVolume = location === 'duel' ? 0.6 : 0.3;
+      fadeAudio(targetVolume, 600);
+    }
+  }, [isRecording, location, fadeAudio]);
+
+  // Efekt do obsługi zmiany ścieżki audio bez restartu
+  // Uruchamia się tylko gdy audioUrl zmienia się na nową wartość stanu
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !audioUrl) return;
+    audio.loop = true;
+    audio.src = audioUrl;
+    audio.load();
+    void audio.play().catch((e) => console.warn('Autoplay blocked:', e));
+    console.log('Ładowanie nowej ścieżki audio:', getUrlPath(audioUrl));
+  }, [audioUrl]);
+
 
   // Efekt do inicjalizacji sesji (tylko raz)
   useEffect(() => {
@@ -52,7 +141,7 @@ function App() {
       .catch(err => console.error("Failed to initialize session:", err));
   }, [PLAYER_ID]);
 
-  // Efekt do nasłuchu bazy danych (wznawiany poprawnie przez Reacta)
+  // Efekt do nasłuchu bazy danych
   useEffect(() => {
     const turnsRef = collection(db, 'sessions', PLAYER_ID, 'turns');
     const q = query(turnsRef, orderBy('turn_id', 'asc'));
@@ -65,6 +154,27 @@ function App() {
 
         if (latestData.hp !== undefined) setHp(latestData.hp);
         if (latestData.scene_description) setSceneDescription(latestData.scene_description);
+        if (latestData.location) setLocation(latestData.location);
+
+        // Aktualizuj URL obrazka tylko gdy zmienił się plik (nie tylko signed URL)
+        if (latestData.background_url) {
+          const newBgPath = getUrlPath(latestData.background_url);
+          if (newBgPath !== currentBgPathRef.current) {
+            currentBgPathRef.current = newBgPath;
+            setBackgroundUrl(latestData.background_url);
+            console.log('Nowe tło:', newBgPath);
+          }
+        }
+
+        // Aktualizuj URL audio tylko gdy zmienił się plik (nie tylko signed URL)
+        if (latestData.audio_url) {
+          const newAudioPath = getUrlPath(latestData.audio_url);
+          if (newAudioPath !== currentAudioPathRef.current) {
+            currentAudioPathRef.current = newAudioPath;
+            setAudioUrl(latestData.audio_url);
+            console.log('Nowa muzyka:', newAudioPath);
+          }
+        }
 
         const allLogs: LogEntry[] = [];
         querySnapshot.docs.forEach(doc => {
@@ -88,33 +198,18 @@ function App() {
     return () => unsub();
   }, [PLAYER_ID]);
 
-  const onTranscript = useCallback((transcript: string) => {
-    // Nie dodajemy logu ręcznie – polegamy na tym, że po pomyślnym wysłaniu
-    // backend zapisze go w bazie, co wywoła onSnapshot i zaktualizuje UI.
-    console.log("Transkrypcja wygenerowana:", transcript);
-  }, []);
-
-  const onError = useCallback((message: string) => {
-    setLogs((prev) => [
-      ...prev,
-      { id: Date.now().toString(), text: `⚠ ${message}`, type: 'error' },
-    ]);
-  }, []);
-
-  const { status, startRecording, stopRecording } =
-    useVoiceRecorder(PLAYER_ID, onTranscript, onError);
-
-  const isRecording = status === 'recording';
-  const isProcessing = status === 'processing';
-
-  const logEndRef = useRef<HTMLDivElement>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
   useEffect(() => {
     if (logEndRef.current) {
-      logEndRef.current.scrollTop = logEndRef.current.scrollHeight;
+      logEndRef.current.scrollTo({
+        top: logEndRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
     }
-  }, [logs]);
+  }, [logs, pendingTranscript]);
+
+  // Tymczasowy transkrypt widoczny dopóki Firestore nie dostarczy prawdziwego wpisu
+  const showPendingTranscript = pendingTranscript && !logs.some(l => l.text === pendingTranscript);
+
 
   const handleMicClick = () => {
     if (isProcessing) return;
@@ -129,11 +224,11 @@ function App() {
     if (!window.confirm("Czy na pewno chcesz zresetować grę? Cały postęp zostanie utracony.")) {
       return;
     }
-    
+
     setIsSettingsOpen(false);
     setSceneDescription("Resetowanie...");
     setLogs([]);
-    
+
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? '';
     try {
       const res = await fetch(`${BACKEND_URL}/api/reset`, {
@@ -153,13 +248,26 @@ function App() {
 
   return (
     <div className="game-window">
+      <div style={{ display: 'none' }}>
+        <audio
+          ref={audioRef}
+          loop
+          playsInline
+          onPlay={() => console.log("Muzyka gra:", audioRef.current?.src)}
+          onError={(e) => console.error("Błąd odtwarzania audio:", e)}
+        />
+      </div>
       {/* Upper Zone: SCENE */}
       <section className="scene-area">
         <img
-          src="/tavern_interior.png"
-          alt="Tavern Interior"
-          className="illustration-img"
-          onError={(e) => (e.currentTarget.style.display = 'none')}
+          key={backgroundUrl}
+          src={backgroundUrl}
+          alt="Scene Background"
+          onLoad={() => console.log("Obrazek tła załadowany:", backgroundUrl)}
+          onError={(e) => {
+            console.error("Błąd ładowania tła:", backgroundUrl);
+            e.currentTarget.style.display = 'none';
+          }}
         />
 
         <div className="character-badge pixel-border-thin">
@@ -183,9 +291,9 @@ function App() {
             <span className="hp-label">HP {hp}/100</span>
           </div>
         </div>
-        
-        <button 
-          className="settings-button pixel-border-thin" 
+
+        <button
+          className="settings-button pixel-border-thin"
           onClick={() => setIsSettingsOpen(true)}
           aria-label="Ustawienia"
         >
@@ -205,6 +313,10 @@ function App() {
               {log.text}
             </div>
           ))}
+          {/* Tymczasowy transkrypt — pokazywany od razu po rozpoznaniu głosu */}
+          {showPendingTranscript && (
+            <div className="log-entry action">{pendingTranscript}</div>
+          )}
           {isProcessing && <div className="log-entry system">⏳ Przetwarzanie…</div>}
         </div>
 
