@@ -30,6 +30,17 @@ except Exception as e:
     logger.error(f"Nie udało się zainicjalizować klienta Firestore: {e}")
     db = None
 
+def _enrich_with_urls(turn: dict) -> dict:
+    """Generuje świeże Signed URLe na podstawie kluczy GCS zapisanych w turze."""
+    bg_key = turn.get("background_key")
+    audio_key = turn.get("audio_key")
+    if bg_key:
+        turn["background_url"] = generate_signed_url(bg_key, expiration_minutes=60)
+    if audio_key:
+        turn["audio_url"] = generate_signed_url(audio_key, expiration_minutes=60)
+    return turn
+
+
 def get_history(player_id: str, limit: int = 15) -> list:
     """Pobiera chronologiczną historię tur gracza."""
     if not db:
@@ -47,10 +58,10 @@ def get_history(player_id: str, limit: int = 15) -> list:
     return results
 
 def get_latest_state(player_id: str) -> dict:
-    """Zwraca ostatnią turę, która reprezentuje aktualny stan gry."""
+    """Zwraca ostatnią turę z odświeżonymi Signed URLami."""
     history = get_history(player_id, limit=1)
     if history:
-        return history[0]
+        return _enrich_with_urls(history[0])
     return None
 
 def add_turn(player_id: str, turn_data: dict) -> dict:
@@ -92,8 +103,7 @@ def add_turn(player_id: str, turn_data: dict) -> dict:
         background_path = "assets/scenes/failure.png"
         audio_path = "audio/Background music/Failure.webm"
         
-    turn_data["background_url"] = generate_signed_url(background_path, expiration_minutes=60)
-    turn_data["audio_url"] = generate_signed_url(audio_path, expiration_minutes=60)
+    # Przechowujemy tylko klucze GCS – URLe są generowane dynamicznie przy odczycie
     turn_data["background_key"] = background_path
     turn_data["audio_key"] = audio_path
     
@@ -104,7 +114,8 @@ def add_turn(player_id: str, turn_data: dict) -> dict:
     
     safe_data = dict(turn_data)
     safe_data["created_at"] = now.isoformat()
-    return safe_data
+    # Generujemy świeże URLe przed zwróceniem odpowiedzi
+    return _enrich_with_urls(safe_data)
 
 def init_session(player_id: str) -> dict:
     """Inicjalizuje nową grę, tworząc pierwszą turę, chyba że już istnieje historia."""
