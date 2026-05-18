@@ -7,11 +7,10 @@ from storage_client import generate_signed_url
 
 logger = logging.getLogger(__name__)
 
-# Ścieżka do klucza JSON – domyślnie obok tego pliku, nadpisywalna przez env
-_CREDENTIALS_PATH = os.environ.get(
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    os.path.join(os.path.dirname(__file__), "gcp-credentials.json"),
-)
+# Lokalny klucz JSON ma zawsze priorytet nad zmienną środowiskową
+# (chroni przed przypadkowym użyciem systemowych credentials np. gemini-cli)
+_LOCAL_CREDS = os.path.join(os.path.dirname(__file__), "gcp-credentials.json")
+_CREDENTIALS_PATH = _LOCAL_CREDS if os.path.isfile(_LOCAL_CREDS) else os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
 
 def _get_firestore_client() -> firestore.Client:
     if os.path.isfile(_CREDENTIALS_PATH):
@@ -103,9 +102,12 @@ def add_turn(player_id: str, turn_data: dict) -> dict:
         background_path = "assets/scenes/failure.png"
         audio_path = "audio/Background music/Failure.webm"
         
-    # Przechowujemy tylko klucze GCS – URLe są generowane dynamicznie przy odczycie
+    # Zapisujemy klucze GCS (trwałe) i świeże Signed URLe (ważne 60 min)
+    # Frontend czyta background_url/audio_url bezpośrednio przez onSnapshot z Firestore
     turn_data["background_key"] = background_path
     turn_data["audio_key"] = audio_path
+    turn_data["background_url"] = generate_signed_url(background_path, expiration_minutes=60)
+    turn_data["audio_url"] = generate_signed_url(audio_path, expiration_minutes=60)
     
     doc_ref = db.collection("sessions").document(player_id).collection("turns").document(str(turn_id))
     doc_ref.set(turn_data)
@@ -114,8 +116,7 @@ def add_turn(player_id: str, turn_data: dict) -> dict:
     
     safe_data = dict(turn_data)
     safe_data["created_at"] = now.isoformat()
-    # Generujemy świeże URLe przed zwróceniem odpowiedzi
-    return _enrich_with_urls(safe_data)
+    return safe_data
 
 def init_session(player_id: str) -> dict:
     """Inicjalizuje nową grę, tworząc pierwszą turę, chyba że już istnieje historia."""

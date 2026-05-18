@@ -43,7 +43,8 @@ function App() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const initStartedRef = useRef(false);
   const logEndRef = useRef<HTMLDivElement>(null);
-  const fadeRafRef = useRef<number | null>(null);
+  const fadeIntervalRef = useRef<number | null>(null);
+
   // Śledzi ścieżkę pliku (bez signed params) aktualnie załadowanego w audio/img
   const currentAudioPathRef = useRef<string | null>(null);
   const currentBgPathRef = useRef<string | null>(null);
@@ -52,25 +53,32 @@ function App() {
   const fadeAudio = useCallback((targetVolume: number, duration: number) => {
     if (!audioRef.current) return;
     const audio = audioRef.current;
+    
+    if (fadeIntervalRef.current !== null) {
+      clearInterval(fadeIntervalRef.current);
+    }
+
+    const clamp = (v: number) => Math.min(1, Math.max(0, v));
+    const target = clamp(targetVolume);
     const startVolume = audio.volume;
     const startTime = performance.now();
 
-    if (fadeRafRef.current !== null) {
-      cancelAnimationFrame(fadeRafRef.current);
-    }
+    fadeIntervalRef.current = window.setInterval(() => {
+      const now = performance.now();
+      const progress = Math.min((now - startTime) / duration, 1);
+      
+      // smoothstep easing (eliminuje ostre przeskoki "zipper noise" na początku i końcu fadu)
+      const ease = progress * progress * (3 - 2 * progress);
+      
+      audio.volume = clamp(startVolume + (target - startVolume) * ease);
 
-    const tick = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      audio.volume = startVolume + (targetVolume - startVolume) * progress;
-      if (progress < 1) {
-        fadeRafRef.current = requestAnimationFrame(tick);
-      } else {
-        fadeRafRef.current = null;
+      if (progress >= 1) {
+        if (fadeIntervalRef.current !== null) {
+          clearInterval(fadeIntervalRef.current);
+          fadeIntervalRef.current = null;
+        }
       }
-    };
-
-    fadeRafRef.current = requestAnimationFrame(tick);
+    }, 10);
   }, []);
 
   const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
@@ -97,19 +105,25 @@ function App() {
   // Efekt do dynamicznej regulacji głośności z płynnym fade
   // Wyciszamy tylko podczas nagrywania — podczas przetwarzania muzyka wraca
   useEffect(() => {
+    const audio = audioRef.current;
+    
     if (isRecording) {
       fadeAudio(0, 300);
     } else {
+      if (audio && audio.src && audio.paused) {
+        void audio.play().catch(e => console.warn("Nie można wznowić audio:", e));
+      }
+
       const targetVolume = location === 'duel' ? 0.6 : 0.3;
       fadeAudio(targetVolume, 600);
     }
   }, [isRecording, location, fadeAudio]);
 
   // Efekt do obsługi zmiany ścieżki audio bez restartu
-  // Uruchamia się tylko gdy audioUrl zmienia się na nową wartość stanu
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !audioUrl) return;
+
     audio.loop = true;
     audio.src = audioUrl;
     audio.load();
@@ -228,6 +242,7 @@ function App() {
     setIsSettingsOpen(false);
     setSceneDescription("Resetowanie...");
     setLogs([]);
+    setPendingTranscript(null);
 
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? '';
     try {

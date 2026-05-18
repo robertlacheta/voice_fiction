@@ -40,6 +40,8 @@ export function useVoiceRecorder(
       try {
         const form = new FormData();
         form.append('player_id', playerId);
+        // Zostawiamy .wav, by backend (FastAPI) nie narzucał sztywnego kodowania WEBM_OPUS 
+        // do STT, co gryzło się z auto-detekcją formatów z przeglądarek.
         form.append('audio', blob, 'recording.wav');
 
         const res = await fetch(`${BACKEND_URL}/api/recognize`, {
