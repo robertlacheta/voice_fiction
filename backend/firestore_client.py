@@ -2,13 +2,13 @@ import logging
 import os
 from typing import Optional
 from datetime import datetime, timezone
+import firebase_admin
+from firebase_admin import credentials as fa_credentials
+from firebase_admin import firestore as fa_firestore
 from google.cloud import firestore
-from google.oauth2 import service_account
 from storage_client import generate_signed_url
 
 logger = logging.getLogger(__name__)
-
-import google.auth
 
 # Lokalny klucz JSON ma zawsze priorytet nad zmienną środowiskową
 # (chroni przed przypadkowym użyciem systemowych credentials np. gemini-cli)
@@ -22,22 +22,34 @@ _PROJECT_ID = os.environ.get(
 os.environ["GOOGLE_CLOUD_PROJECT"] = _PROJECT_ID
 os.environ["GCLOUD_PROJECT"] = _PROJECT_ID
 
-def _get_firestore_client() -> firestore.Client:
-    if os.path.isfile(_CREDENTIALS_PATH):
-        credentials = service_account.Credentials.from_service_account_file(
-            _CREDENTIALS_PATH,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"],
-        )
-        return firestore.Client(project=_PROJECT_ID, credentials=credentials)
-    
-    logger.info(f"Brak pliku credentials – używam Application Default Credentials (ADC) dla Firestore (project={_PROJECT_ID}).")
-    return firestore.Client(project=_PROJECT_ID)
+
+def _get_firestore_client():
+    try:
+        if not firebase_admin._apps:
+            if os.path.isfile(_CREDENTIALS_PATH):
+                cred = fa_credentials.Certificate(_CREDENTIALS_PATH)
+                firebase_admin.initialize_app(cred, {"projectId": _PROJECT_ID})
+            else:
+                firebase_admin.initialize_app(options={"projectId": _PROJECT_ID})
+        return fa_firestore.client()
+    except Exception as e:
+        logger.warning(f"Błąd inicjalizacji firebase_admin: {e}, fallback do google-cloud-firestore...")
+        if os.path.isfile(_CREDENTIALS_PATH):
+            from google.oauth2 import service_account
+            creds = service_account.Credentials.from_service_account_file(
+                _CREDENTIALS_PATH,
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+            return firestore.Client(project=_PROJECT_ID, credentials=creds)
+        return firestore.Client(project=_PROJECT_ID)
+
 
 try:
     db = _get_firestore_client()
 except Exception as e:
     logger.error(f"Nie udało się zainicjalizować klienta Firestore: {e}")
     db = None
+
 
 def _enrich_with_urls(turn: dict) -> dict:
     """Generuje świeże Signed URLe na podstawie kluczy GCS zapisanych w turze."""
@@ -66,12 +78,14 @@ def get_history(player_id: str, limit: int = 15) -> list:
     results.reverse() # Zwracamy od najstarszej do najnowszej
     return results
 
+
 def get_latest_state(player_id: str) -> Optional[dict]:
     """Zwraca ostatnią turę z odświeżonymi Signed URLami."""
     history = get_history(player_id, limit=1)
     if history:
         return _enrich_with_urls(history[0])
     return None
+
 
 def add_turn(player_id: str, turn_data: dict) -> dict:
     """Dodaje nową turę do historii gracza."""
@@ -128,6 +142,7 @@ def add_turn(player_id: str, turn_data: dict) -> dict:
     safe_data["created_at"] = now.isoformat()
     return safe_data
 
+
 def init_session(player_id: str, language: str = "pl") -> dict:
     """Inicjalizuje nową grę, tworząc pierwszą turę, chyba że już istnieje historia."""
     latest = get_latest_state(player_id)
@@ -163,6 +178,7 @@ def init_session(player_id: str, language: str = "pl") -> dict:
     
     return add_turn(player_id, first_turn)
 
+
 def reset_session(player_id: str, language: str = "pl") -> dict:
     """Czyści historię gracza i rozpoczyna nową grę."""
     if not db:
@@ -189,4 +205,3 @@ def reset_session(player_id: str, language: str = "pl") -> dict:
         
     logger.info(f"Usunięto stare tury dla gracza {player_id}.")
     return init_session(player_id, language=language)
-
