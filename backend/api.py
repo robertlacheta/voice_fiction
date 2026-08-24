@@ -49,7 +49,7 @@ def initialize_session(req: InitRequest):
         return session_data
     except Exception as e:
         logger.error(f"Błąd inicjalizacji sesji dla {req.player_id}: {e}")
-        raise HTTPException(status_code=500, detail="Nie udało się zainicjalizować sesji.")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/reset")

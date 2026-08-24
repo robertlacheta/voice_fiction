@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+google-auth
 google-cloud-speech
 python-multipart
 google-cloud-firestore
