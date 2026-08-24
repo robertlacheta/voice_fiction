@@ -15,15 +15,12 @@ import google.auth
 _LOCAL_CREDS = os.path.join(os.path.dirname(__file__), "gcp-credentials.json")
 _CREDENTIALS_PATH = _LOCAL_CREDS if os.path.isfile(_LOCAL_CREDS) else os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
 
-try:
-    _, default_project_id = google.auth.default()
-except Exception:
-    default_project_id = None
-
 _PROJECT_ID = os.environ.get(
     "VITE_FIREBASE_PROJECT_ID",
-    os.environ.get("GOOGLE_CLOUD_PROJECT", default_project_id or "project-156a0c69-6d30-45a1-bd9"),
+    os.environ.get("GOOGLE_CLOUD_PROJECT", "project-156a0c69-6d30-45a1-bd9"),
 )
+os.environ["GOOGLE_CLOUD_PROJECT"] = _PROJECT_ID
+os.environ["GCLOUD_PROJECT"] = _PROJECT_ID
 
 def _get_firestore_client() -> firestore.Client:
     if os.path.isfile(_CREDENTIALS_PATH):

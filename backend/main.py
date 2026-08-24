@@ -1,6 +1,12 @@
+import os
+
+# Wymuszenie identyfikatora projektu jako string zamiast numeru projektu z Cloud Run Metadata
+_PROJECT_ID = os.environ.get("VITE_FIREBASE_PROJECT_ID", "project-156a0c69-6d30-45a1-bd9")
+os.environ["GOOGLE_CLOUD_PROJECT"] = _PROJECT_ID
+os.environ["GCLOUD_PROJECT"] = _PROJECT_ID
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
 import uvicorn
 
 from api import router
