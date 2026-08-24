@@ -15,6 +15,7 @@ export function useVoiceRecorder(
   playerId: string,
   onTranscript: (transcript: string) => void,
   onError: (message: string) => void,
+  language: string = 'pl',
 ): VoiceRecorderResult {
   const [status, setStatus] = useState<RecorderStatus>('idle');
 
@@ -37,9 +38,11 @@ export function useVoiceRecorder(
   const sendAudio = useCallback(
     async (blob: Blob) => {
       setStatus('processing');
+      const isEnglish = language.startsWith('en');
       try {
         const form = new FormData();
         form.append('player_id', playerId);
+        form.append('language', language);
         // Zostawiamy .wav, by backend (FastAPI) nie narzucał sztywnego kodowania WEBM_OPUS 
         // do STT, co gryzło się z auto-detekcją formatów z przeglądarek.
         form.append('audio', blob, 'recording.wav');
@@ -50,7 +53,11 @@ export function useVoiceRecorder(
         });
 
         if (res.status === 413) {
-          throw new Error('Nagranie jest zbyt długie – maksymalnie ~6 sekund.');
+          throw new Error(
+            isEnglish
+              ? 'Recording is too long – max ~6 seconds.'
+              : 'Nagranie jest zbyt długie – maksymalnie ~6 sekund.'
+          );
         }
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -61,7 +68,7 @@ export function useVoiceRecorder(
         onTranscript(data.transcript);
         setStatus('idle');
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Nieznany błąd.';
+        const message = err instanceof Error ? err.message : (isEnglish ? 'Unknown error.' : 'Nieznany błąd.');
         onError(message);
         setStatus('error');
       } finally {
@@ -71,7 +78,7 @@ export function useVoiceRecorder(
         chunksRef.current = [];
       }
     },
-    [playerId, onTranscript, onError],
+    [playerId, onTranscript, onError, language],
   );
 
   const startRecording = useCallback(async () => {

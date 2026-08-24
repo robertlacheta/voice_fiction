@@ -73,6 +73,43 @@
   border-color: #c04040;
 }
 
+.lang-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+}
+
+.lang-group label {
+  color: var(--text-ui);
+  font-size: 18px;
+  font-family: 'VT323', monospace;
+}
+
+.lang-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.lang-btn {
+  background: rgba(18, 16, 12, 0.8);
+  color: var(--text-main);
+  border: 1px solid var(--text-ui);
+  padding: 4px 12px;
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.lang-btn.active {
+  background: var(--text-name);
+  color: #12100c;
+  border-color: var(--text-name);
+  font-weight: bold;
+}
+
 .close-modal-button {
   background: transparent;
   color: var(--text-main);

@@ -17,3 +17,6 @@ htmlcov/
 # GCP credentials
 backend/gcp-credentials.json
 *.json.key
+# Documents
+*.docx
+*.doc

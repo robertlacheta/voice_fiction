@@ -118,7 +118,7 @@ def add_turn(player_id: str, turn_data: dict) -> dict:
     safe_data["created_at"] = now.isoformat()
     return safe_data
 
-def init_session(player_id: str) -> dict:
+def init_session(player_id: str, language: str = "pl") -> dict:
     """Inicjalizuje nową grę, tworząc pierwszą turę, chyba że już istnieje historia."""
     latest = get_latest_state(player_id)
     if latest:
@@ -128,23 +128,32 @@ def init_session(player_id: str) -> dict:
         return latest
 
     # Nowa gra
+    is_en = (language or "pl").lower().startswith("en")
     first_turn = {
         "status": "active",
         "hp": 100,
         "location": "tavern",
-        "scene_description": "Znajdujesz się w zadymionej karczmie. Za barem stoi potężny barman.",
+        "scene_description": (
+            "You are inside a smoky tavern. A sturdy innkeeper stands behind the counter."
+            if is_en
+            else "Znajdujesz się w zadymionej karczmie. Za barem stoi potężny barman."
+        ),
         "turn_source": "system",
         "segments": [
             {
                 "type": "system",
-                "text": "Wchodzisz do Karczmy pod Zdechłym Dzikiem."
+                "text": (
+                    "You enter the Dead Boar Tavern."
+                    if is_en
+                    else "Wchodzisz do Karczmy pod Zdechłym Dzikiem."
+                )
             }
         ]
     }
     
     return add_turn(player_id, first_turn)
 
-def reset_session(player_id: str) -> dict:
+def reset_session(player_id: str, language: str = "pl") -> dict:
     """Czyści historię gracza i rozpoczyna nową grę."""
     if not db:
         raise RuntimeError("Klient Firestore nie jest zainicjalizowany.")
@@ -169,4 +178,5 @@ def reset_session(player_id: str) -> dict:
         batch.commit()
         
     logger.info(f"Usunięto stare tury dla gracza {player_id}.")
-    return init_session(player_id)
+    return init_session(player_id, language=language)
+

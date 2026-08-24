@@ -28,14 +28,33 @@ function getUrlPath(url: string): string {
   }
 }
 
+function getInitialLanguage(): 'pl' | 'en' {
+  const saved = localStorage.getItem('vf_language');
+  if (saved === 'pl' || saved === 'en') {
+    return saved;
+  }
+  const browserLang = (
+    (navigator.languages && navigator.languages[0]) ||
+    navigator.language ||
+    ''
+  ).toLowerCase();
+
+  return browserLang.startsWith('pl') ? 'pl' : 'en';
+}
+
 function App() {
   const [PLAYER_ID] = useState(() => getOrCreatePlayerId());
+  const [language, setLanguage] = useState<'pl' | 'en'>(() => getInitialLanguage());
+
+  const isEn = language === 'en';
 
   const [hp, setHp] = useState(100);
   const [avatarError, setAvatarError] = useState(false);
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [sceneDescription, setSceneDescription] = useState("Ładowanie...");
+  const [sceneDescription, setSceneDescription] = useState(() =>
+    isEn ? "Loading..." : "Ładowanie..."
+  );
   const [backgroundUrl, setBackgroundUrl] = useState<string>("/tavern_interior.png");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [location, setLocation] = useState<string>("tavern");
@@ -49,6 +68,12 @@ function App() {
   const currentAudioPathRef = useRef<string | null>(null);
   const currentBgPathRef = useRef<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const handleLanguageChange = (newLang: 'pl' | 'en') => {
+    if (newLang === language) return;
+    setLanguage(newLang);
+    localStorage.setItem('vf_language', newLang);
+  };
 
   const fadeAudio = useCallback((targetVolume: number, duration: number) => {
     if (!audioRef.current) return;
@@ -97,7 +122,7 @@ function App() {
   }, []);
 
   const { status, startRecording, stopRecording } =
-    useVoiceRecorder(PLAYER_ID, onTranscript, onError);
+    useVoiceRecorder(PLAYER_ID, onTranscript, onError, language);
 
   const isRecording = status === 'recording';
   const isProcessing = status === 'processing';
@@ -143,7 +168,7 @@ function App() {
     fetch(`${BACKEND_URL}/api/init`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ player_id: PLAYER_ID }),
+      body: JSON.stringify({ player_id: PLAYER_ID, language }),
     })
       .then(res => {
         if (!res.ok) {
@@ -153,7 +178,7 @@ function App() {
       })
       .then(data => console.log("Sesja zainicjowana poprawnie:", data))
       .catch(err => console.error("Failed to initialize session:", err));
-  }, [PLAYER_ID]);
+  }, [PLAYER_ID, language]);
 
   // Efekt do nasłuchu bazy danych
   useEffect(() => {
@@ -235,12 +260,16 @@ function App() {
   };
 
   const handleResetGame = async () => {
-    if (!window.confirm("Czy na pewno chcesz zresetować grę? Cały postęp zostanie utracony.")) {
+    const confirmMessage = isEn
+      ? "Are you sure you want to reset the game? All progress will be lost."
+      : "Czy na pewno chcesz zresetować grę? Cały postęp zostanie utracony.";
+
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
     setIsSettingsOpen(false);
-    setSceneDescription("Resetowanie...");
+    setSceneDescription(isEn ? "Resetting..." : "Resetowanie...");
     setLogs([]);
     setPendingTranscript(null);
 
@@ -249,7 +278,7 @@ function App() {
       const res = await fetch(`${BACKEND_URL}/api/reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player_id: PLAYER_ID }),
+        body: JSON.stringify({ player_id: PLAYER_ID, language }),
       });
       if (!res.ok) {
         throw new Error(`HTTP Error: ${res.status}`);
@@ -257,7 +286,7 @@ function App() {
       console.log("Gra została zresetowana.");
     } catch (err) {
       console.error("Błąd resetowania gry:", err);
-      onError("Nie udało się zresetować gry.");
+      onError(isEn ? "Failed to reset the game." : "Nie udało się zresetować gry.");
     }
   };
 
@@ -310,7 +339,8 @@ function App() {
         <button
           className="settings-button pixel-border-thin"
           onClick={() => setIsSettingsOpen(true)}
-          aria-label="Ustawienia"
+          aria-label={isEn ? "Settings" : "Ustawienia"}
+          title={isEn ? "Settings" : "Ustawienia"}
         >
           ⚙️
         </button>
@@ -332,7 +362,11 @@ function App() {
           {showPendingTranscript && (
             <div className="log-entry action">{pendingTranscript}</div>
           )}
-          {isProcessing && <div className="log-entry system">⏳ Przetwarzanie…</div>}
+          {isProcessing && (
+            <div className="log-entry system">
+              {isEn ? "⏳ Processing…" : "⏳ Przetwarzanie…"}
+            </div>
+          )}
         </div>
 
         <div className="log-separator"></div>
@@ -342,14 +376,18 @@ function App() {
             className={`mic-button ${isRecording ? 'recording' : ''}`}
             onClick={handleMicClick}
             disabled={isProcessing}
-            aria-label="Mikrofon"
+            aria-label={isEn ? "Microphone" : "Mikrofon"}
           >
             {isRecording && <div className="mic-pulse"></div>}
             <div className="mic-icon"></div>
           </button>
 
           <span className="mic-status-text">
-            {isProcessing ? "Przetwarzanie..." : isRecording ? "Nagrywanie (max 8s)..." : "Kliknij raz by mówić"}
+            {isProcessing
+              ? (isEn ? "Processing..." : "Przetwarzanie...")
+              : isRecording
+                ? (isEn ? "Recording (max 8s)..." : "Nagrywanie (max 8s)...")
+                : (isEn ? "Click once to speak" : "Kliknij raz by mówić")}
           </span>
         </div>
       </section>
@@ -357,13 +395,34 @@ function App() {
       {isSettingsOpen && (
         <div className="settings-modal-overlay">
           <div className="settings-modal pixel-border">
-            <h2>USTAWIENIA</h2>
-            <p>Twój ID: {PLAYER_ID}</p>
+            <h2>{isEn ? "SETTINGS" : "USTAWIENIA"}</h2>
+            <p>{isEn ? `Player ID: ${PLAYER_ID}` : `Twój ID: ${PLAYER_ID}`}</p>
+            
+            <div className="lang-group">
+              <label>{isEn ? "Language:" : "Język:"}</label>
+              <div className="lang-buttons">
+                <button
+                  type="button"
+                  className={`lang-btn ${language === 'pl' ? 'active' : ''}`}
+                  onClick={() => handleLanguageChange('pl')}
+                >
+                  Polski
+                </button>
+                <button
+                  type="button"
+                  className={`lang-btn ${language === 'en' ? 'active' : ''}`}
+                  onClick={() => handleLanguageChange('en')}
+                >
+                  English
+                </button>
+              </div>
+            </div>
+
             <button className="reset-button pixel-border-thin" onClick={handleResetGame}>
-              Zacznij od nowa
+              {isEn ? "Start New Game" : "Zacznij od nowa"}
             </button>
             <button className="close-modal-button" onClick={() => setIsSettingsOpen(false)}>
-              Zamknij
+              {isEn ? "Close" : "Zamknij"}
             </button>
           </div>
         </div>

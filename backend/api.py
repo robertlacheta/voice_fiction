@@ -35,12 +35,13 @@ def _get_speech_client() -> speech.SpeechClient:
 
 class InitRequest(BaseModel):
     player_id: str
+    language: str = "pl"
 
 
 @router.post("/api/init")
 def initialize_session(req: InitRequest):
     try:
-        session_data = init_session(req.player_id)
+        session_data = init_session(req.player_id, language=req.language)
 
         # Wysyłamy asynchroniczne powiadomienie do Pub/Sub
         publish_game_started(req.player_id)
@@ -54,7 +55,7 @@ def initialize_session(req: InitRequest):
 @router.post("/api/reset")
 def reset_game_session(req: InitRequest):
     try:
-        session_data = reset_session(req.player_id)
+        session_data = reset_session(req.player_id, language=req.language)
         publish_game_started(req.player_id)
         return session_data
     except Exception as e:
@@ -66,6 +67,7 @@ def reset_game_session(req: InitRequest):
 async def recognize_speech(
     audio: UploadFile = File(..., description="Plik audio do transkrypcji"),
     player_id: str = Form(..., description="Identyfikator gracza"),
+    language: str = Form("pl", description="Preferowany język (pl lub en)"),
 ):
     try:
         audio_bytes = await audio.read()
@@ -92,18 +94,22 @@ async def recognize_speech(
         )
 
     content_type = (audio.content_type or "").lower()
+    is_english = (language or "pl").lower().startswith("en")
+    primary_lang = "en-US" if is_english else "pl-PL"
+    alt_langs = ["pl-PL"] if is_english else ["en-US"]
 
     if content_type.startswith(("audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave")):
         recognition_config = speech.RecognitionConfig(
-            language_code="pl-PL",
+            language_code=primary_lang,
+            alternative_language_codes=alt_langs,
             model="latest_long",  # lepszy model dla naturalnej mowy konwersacyjnej
             enable_automatic_punctuation=True,
         )
     elif content_type.startswith(("audio/webm", "audio/ogg")):
         recognition_config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
-            # Nie ustawiamy sample_rate_hertz — Google STT odczytuje go z kontenera WebM
-            language_code="pl-PL",
+            language_code=primary_lang,
+            alternative_language_codes=alt_langs,
             model="latest_long",  # lepszy model dla naturalnej mowy konwersacyjnej
             enable_automatic_punctuation=True,
         )
@@ -138,7 +144,12 @@ async def recognize_speech(
     logger.info("player_id=%s | transcript=%r", player_id, transcript)
 
     if not transcript:
-        raise HTTPException(status_code=400, detail="Nie udało się rozpoznać mowy. Spróbuj mówić głośniej i wyraźniej.")
+        err_msg = (
+            "Could not recognize speech. Please speak louder and clearer."
+            if is_english
+            else "Nie udało się rozpoznać mowy. Spróbuj mówić głośniej i wyraźniej."
+        )
+        raise HTTPException(status_code=400, detail=err_msg)
 
     try:
         current_state = get_latest_state(player_id)
